@@ -11,6 +11,9 @@
 - macOS 上的普通 `Command+C` 复制行为保持不变。翻译快捷键只读取 viewer 主动发送的选区事件，从不读取剪贴板。
 - 新增活动栏翻译视图：操作按钮位于顶部，流式 Markdown 译文位于上方，当前原文位于下方。
 - 在内置的 **PDF Translator Viewer** 中打开 PDF，并直接跟随选区事件。有 SyncTeX 数据时，扩展会在 SyncTeX 记录的 `.tex` 文件中保守匹配 PDF 选中文字，并把对应源码交给模型。
+- 使用与 LaTeX Workshop 相同的 loopback HTTP 加载架构：PDF.js、worker、字体和 PDF 位于同一本地 origin，避开 `vscode-webview-resource` 冷启动代理延迟。
+- 分别记住每份 PDF 上次浏览的页码、页内滚动位置和缩放模式，重新打开 viewer 时恢复阅读断点。
+- 保留双击选词的默认行为。在 PDF 位置三击会通过反向 SyncTeX 跳转到 TeX 源码；SyncTeX 命令无法解析该位置时，才保守回退到选中文字映射。
 - 跟随配置允许的文本文件中的非空选区。`pdfTranslator.textSelectionPatterns` 是 JSON 列表，默认值为 `["*.tex"]`；需要时可加入 `"*.md"` 或 `"chapters/**/*.tex"` 等条目。
 - 记住 **使用 LaTeX 源码** 的选择。当前选区无法映射时，该选项保持选中但暂时置灰；下一个可映射选区会自动恢复 LaTeX 模式。
 - 支持 OpenAI Responses、OpenAI-compatible Chat Completions、Anthropic Messages 和旧式 Completions 请求格式。
@@ -36,7 +39,7 @@ code .
 
 ```sh
 npm run package
-code --install-extension latex-pdf-ai-translator-0.4.1.vsix --force
+code --install-extension latex-pdf-ai-translator-0.4.2.vsix --force
 ```
 
 ## 配置
@@ -56,4 +59,4 @@ code --install-extension latex-pdf-ai-translator-0.4.1.vsix --force
 
 ## 架构说明
 
-扩展拥有自己的精简 PDF.js custom editor，因此可以直接监听 `selectionchange`，无需访问其他扩展的 webview，也不读取剪贴板。扩展会使用选区文本，在相邻 `.synctex` 或 `.synctex.gz` 文件所记录的 `.tex` 文件中保守查找源码范围；确实无法映射时才回退到 PDF 纯文本。
+扩展拥有自己的精简 PDF.js custom editor，因此可以直接监听 `selectionchange` 和三击坐标，无需访问其他扩展的 webview，也不读取剪贴板。扩展使用反向 SyncTeX 完成位置到源码的跳转，并使用选区文本在相邻 `.synctex` 或 `.synctex.gz` 文件所记录的 `.tex` 文件中保守查找源码范围；确实无法映射时才回退到 PDF 纯文本。

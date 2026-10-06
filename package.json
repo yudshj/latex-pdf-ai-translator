@@ -2,7 +2,7 @@
   "name": "latex-pdf-ai-translator",
   "displayName": "LaTeX PDF AI Translator",
   "description": "A focused PDF viewer with SyncTeX-aware selection and streaming AI translation.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/yudshj/latex-pdf-ai-translator",

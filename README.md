@@ -11,6 +11,9 @@ Keep the official `James-Yu.latex-workshop` extension installed for LaTeX projec
 - Leaves the normal `Command+C` copy behavior untouched on macOS. Translation shortcuts use only the selection events sent by the viewer and never read the clipboard.
 - Adds an Activity Bar translation view with actions at the top, streaming Markdown translation above, and the current source below.
 - Opens PDFs in the built-in **PDF Translator Viewer** and follows its selection events directly. When SyncTeX data is available, the extension conservatively matches the selected PDF text against the `.tex` files named by SyncTeX and offers that source to the model.
+- Uses the same loopback HTTP loading architecture as LaTeX Workshop: PDF.js, its worker, fonts, and the PDF share one local origin, avoiding cold `vscode-webview-resource` proxy delays.
+- Remembers each PDF's last page, within-page scroll position, and zoom mode, and restores that reading position when the viewer is reopened.
+- Keeps normal double-click word selection. Triple-click a PDF position to jump to its TeX source through reverse SyncTeX; when the SyncTeX command cannot resolve the point, the selected-text mapper is used as a conservative fallback.
 - Follows non-empty selections in configured text files. `pdfTranslator.textSelectionPatterns` is a JSON list whose default is `["*.tex"]`; add entries such as `"*.md"` or `"chapters/**/*.tex"` as needed.
 - Remembers the **Use LaTeX source** choice. The checked option is disabled rather than cleared when the current selection cannot be mapped, and becomes active again on the next mappable selection.
 - Supports OpenAI Responses, OpenAI-compatible Chat Completions, Anthropic Messages, and legacy Completions request shapes.
@@ -36,7 +39,7 @@ For a local install:
 
 ```sh
 npm run package
-code --install-extension latex-pdf-ai-translator-0.4.1.vsix --force
+code --install-extension latex-pdf-ai-translator-0.4.2.vsix --force
 ```
 
 ## Configure
@@ -56,4 +59,4 @@ If an endpoint does not implement a models-list route, the model command falls b
 
 ## Architecture note
 
-The extension owns its small PDF.js custom editor, so it can listen to `selectionchange` directly without accessing another extension's webview or reading the clipboard. The extension uses the selection text to find a conservative source range among the `.tex` files named by the adjacent `.synctex` or `.synctex.gz` file. Truly unmapped selections fall back to PDF text.
+The extension owns its small PDF.js custom editor, so it can listen to `selectionchange` and triple-click coordinates directly without accessing another extension's webview or reading the clipboard. The extension uses reverse SyncTeX for point-to-source navigation and uses the selection text to find a conservative source range among the `.tex` files named by the adjacent `.synctex` or `.synctex.gz` file. Truly unmapped selections fall back to PDF text.

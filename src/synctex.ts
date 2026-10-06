@@ -1,12 +1,15 @@
+import { execFile } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { gunzip } from 'node:zlib'
 import { promisify } from 'node:util'
 import * as vscode from 'vscode'
+import { parseSyncTeXEditResult } from './pdfViewerProtocol.js'
 import { normalizePdfSelection } from './text.js'
 import { matchLatexSourceEdges } from './sourceEdgeMatcher.js'
 
 const gunzipAsync = promisify(gunzip)
+const execFileAsync = promisify(execFile)
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024
 
 export interface LatexSourceSelection {
@@ -14,6 +17,12 @@ export interface LatexSourceSelection {
     uri: vscode.Uri
     start: vscode.Position
     end: vscode.Position
+    label: string
+}
+
+export interface SyncTeXSourcePosition {
+    uri: vscode.Uri
+    position: vscode.Position
     label: string
 }
 
@@ -341,4 +350,76 @@ export async function resolveLatexSource(pdfText: string, pdfUri: vscode.Uri | u
         end,
         label: `${fileLabel}:${start.line + 1}:${start.character + 1} → ${end.line + 1}:${end.character + 1}`,
     }
+}
+
+function syncTeXCommands(): string[] {
+    const configured = vscode.workspace.getConfiguration('latex-workshop').get<string>('synctex.path', '').trim()
+    return [...new Set([
+        configured,
+        'synctex',
+        ...(process.platform === 'darwin' ? ['/Library/TeX/texbin/synctex'] : []),
+    ].filter(Boolean))]
+}
+
+async function existingSourceUri(input: string, pdfUri: vscode.Uri): Promise<vscode.Uri | undefined> {
+    const cleanInput = input.replace(/^"|"$/g, '')
+    const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? []
+    const candidates = path.isAbsolute(cleanInput)
+        ? [cleanInput]
+        : [path.resolve(path.dirname(pdfUri.fsPath), cleanInput), ...workspaceRoots.map(root => path.resolve(root, cleanInput))]
+    for (const candidate of candidates) {
+        try {
+            if ((await fs.stat(candidate)).isFile()) {
+                return vscode.Uri.file(candidate)
+            }
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                throw error
+            }
+        }
+    }
+    return undefined
+}
+
+/** Resolve a PDF point to its source line with the system SyncTeX client. */
+export async function resolveSyncTeXSource(
+    page: number,
+    x: number,
+    y: number,
+    pdfUri: vscode.Uri,
+): Promise<SyncTeXSourcePosition | undefined> {
+    if (pdfUri.scheme !== 'file' || !Number.isInteger(page) || page < 1
+        || !Number.isFinite(x) || !Number.isFinite(y)) {
+        return undefined
+    }
+    const query = `${page}:${x.toFixed(3)}:${y.toFixed(3)}:${pdfUri.fsPath}`
+    for (const command of syncTeXCommands()) {
+        try {
+            const { stdout } = await execFileAsync(command, ['edit', '-o', query], {
+                cwd: path.dirname(pdfUri.fsPath),
+                encoding: 'utf8',
+                maxBuffer: 1024 * 1024,
+                timeout: 5000,
+            })
+            const result = parseSyncTeXEditResult(stdout)
+            if (!result) {
+                continue
+            }
+            const uri = await existingSourceUri(result.input, pdfUri)
+            if (!uri) {
+                continue
+            }
+            const document = await vscode.workspace.openTextDocument(uri)
+            const line = Math.min(result.line - 1, Math.max(0, document.lineCount - 1))
+            const character = Math.min(result.column, document.lineAt(line).text.length)
+            return {
+                uri,
+                position: new vscode.Position(line, character),
+                label: `${vscode.workspace.asRelativePath(uri, false)}:${line + 1}:${character + 1}`,
+            }
+        } catch {
+            // Try the next executable, then let the caller use text matching.
+        }
+    }
+    return undefined
 }

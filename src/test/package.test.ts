@@ -63,3 +63,19 @@ test('never reads the clipboard for model input', () => {
     const extensionSource = fs.readFileSync(path.join(projectRoot, 'src', 'extension.ts'), 'utf8')
     assert.doesNotMatch(extensionSource, /clipboard\.readText|translateClipboard|handleCopy/u)
 })
+
+test('loads PDF.js and PDFs from one loopback HTTP origin', () => {
+    const viewerSource = fs.readFileSync(path.join(projectRoot, 'src', 'pdfViewer.ts'), 'utf8')
+    assert.match(viewerSource, /server\.listen\(0, '127\.0\.0\.1'/u)
+    assert.match(viewerSource, /\/viewer\/\$\{token\}/u)
+    assert.match(viewerSource, /\/pdf\/\$\{parts\[1\]\}/u)
+    assert.doesNotMatch(viewerSource, /asWebviewUri\(pdfUri\)/u)
+})
+
+test('persists viewer state and reserves source navigation for the third click', () => {
+    const viewerSource = fs.readFileSync(path.join(projectRoot, 'src', 'pdfViewer.ts'), 'utf8')
+    assert.match(viewerSource, /workspaceState\.update/u)
+    assert.match(viewerSource, /event\.detail !== 3/u)
+    assert.match(viewerSource, /type: 'jumpToSource'/u)
+    assert.doesNotMatch(viewerSource, /addEventListener\('dblclick'/u)
+})

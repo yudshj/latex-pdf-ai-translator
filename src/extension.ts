@@ -57,9 +57,10 @@ export function activate(context: vscode.ExtensionContext): void {
     status.name = 'PDF Translator'
     status.command = 'pdfTranslator.openSidebar'
     context.subscriptions.push(status, output)
-    context.subscriptions.push(vscode.window.registerCustomEditorProvider(
+    const pdfViewerProvider = new PdfViewerProvider(context, output)
+    context.subscriptions.push(pdfViewerProvider, vscode.window.registerCustomEditorProvider(
         PdfViewerProvider.viewType,
-        new PdfViewerProvider(context.extensionUri, output),
+        pdfViewerProvider,
         { supportsMultipleEditorsPerDocument: true },
     ))
 
