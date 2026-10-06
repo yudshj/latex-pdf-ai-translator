@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+media/pdfjs/
+*.log
+.env
+.env.*
+.secrets.env
+.dsh-dev-api

@@ -1,0 +1,222 @@
+{
+  "name": "latex-pdf-ai-translator",
+  "displayName": "LaTeX PDF AI Translator",
+  "description": "A focused PDF viewer with SyncTeX-aware selection and streaming AI translation.",
+  "version": "0.4.0",
+  "publisher": "local",
+  "license": "MIT",
+  "homepage": "https://github.com/yudshj/latex-pdf-ai-translator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yudshj/latex-pdf-ai-translator.git"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:pdfTranslator.pdfViewer",
+    "onCommand:pdfTranslator.updatePdfSelection",
+    "onCommand:pdfTranslator.handleShortcut",
+    "onCommand:pdfTranslator.selectModel",
+    "onCommand:pdfTranslator.refreshModels",
+    "onCommand:pdfTranslator.setApiKey",
+    "onCommand:pdfTranslator.clearApiKey",
+    "onCommand:pdfTranslator.openSettings",
+    "onCommand:pdfTranslator.openSidebar",
+    "onView:pdfTranslator.sidebar"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "pdfTranslator.pdfViewer",
+        "displayName": "PDF Translator Viewer",
+        "selector": [
+          { "filenamePattern": "*.pdf" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "pdfTranslator.selectModel",
+        "title": "PDF Translator: Select Cloud Model"
+      },
+      {
+        "command": "pdfTranslator.refreshModels",
+        "title": "PDF Translator: Refresh Cloud Models"
+      },
+      {
+        "command": "pdfTranslator.setApiKey",
+        "title": "PDF Translator: Set API Key Securely"
+      },
+      {
+        "command": "pdfTranslator.clearApiKey",
+        "title": "PDF Translator: Clear Stored API Key"
+      },
+      {
+        "command": "pdfTranslator.openSettings",
+        "title": "PDF Translator: Open Settings"
+      },
+      {
+        "command": "pdfTranslator.handleShortcut",
+        "title": "PDF Translator: Handle PDF Translation Shortcut"
+      },
+      {
+        "command": "pdfTranslator.openSidebar",
+        "title": "PDF Translator: Open Translation Sidebar"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pdfTranslator",
+          "title": "PDF Translator",
+          "icon": "media/translate.svg"
+        }
+      ]
+    },
+    "views": {
+      "pdfTranslator": [
+        {
+          "type": "webview",
+          "id": "pdfTranslator.sidebar",
+          "name": "Translation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "pdfTranslator.handleShortcut",
+        "key": "alt+c",
+        "mac": "ctrl+c",
+        "when": "activeCustomEditorId == 'pdfTranslator.pdfViewer'"
+      }
+    ],
+    "configuration": {
+      "title": "LaTeX PDF AI Translator",
+      "properties": {
+        "pdfTranslator.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the repeated translation shortcut in PDF Translator Viewer."
+        },
+        "pdfTranslator.shortcutPressCount": {
+          "type": "integer",
+          "enum": [2, 3],
+          "default": 2,
+          "description": "Number of consecutive shortcut presses that triggers translation."
+        },
+        "pdfTranslator.shortcutWindowMs": {
+          "type": "integer",
+          "minimum": 250,
+          "maximum": 3000,
+          "default": 900,
+          "description": "Maximum interval between repeated shortcut presses."
+        },
+        "pdfTranslator.apiStyle": {
+          "type": "string",
+          "enum": ["responses", "chat-completions", "anthropic", "completions"],
+          "enumDescriptions": [
+            "OpenAI Responses API (/v1/responses)",
+            "OpenAI-compatible Chat Completions API (/v1/chat/completions)",
+            "Anthropic Messages API (/v1/messages)",
+            "Legacy OpenAI-compatible Completions API (/v1/completions)"
+          ],
+          "default": "chat-completions",
+          "description": "Request protocol used by the configured endpoint."
+        },
+        "pdfTranslator.endpointUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "API base URL or full request endpoint. The matching /v1 path is added when omitted."
+        },
+        "pdfTranslator.modelsEndpointUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional full models-list URL. Empty uses /v1/models under endpointUrl."
+        },
+        "pdfTranslator.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key, or ${env:VARIABLE_NAME}. Prefer the secure Set API Key command."
+        },
+        "pdfTranslator.model": {
+          "type": "string",
+          "default": "deepseek-flash",
+          "description": "Model ID. Use Select Cloud Model for a searchable list."
+        },
+        "pdfTranslator.maxOutputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576,
+          "default": 0,
+          "description": "Maximum output tokens. 0 automatically uses model metadata or the provider default."
+        },
+        "pdfTranslator.thinkingLevel": {
+          "type": "string",
+          "enum": ["off", "medium", "high", "max"],
+          "enumDescriptions": [
+            "Disable model thinking for the shortest translation latency.",
+            "Use medium thinking effort.",
+            "Use high thinking effort.",
+            "Use maximum thinking effort."
+          ],
+          "default": "off",
+          "description": "Thinking effort for DeepSeek-compatible models. The sidebar selector updates this setting."
+        },
+        "pdfTranslator.targetLanguage": {
+          "type": "string",
+          "default": "Simplified Chinese",
+          "description": "Target language when the source is not predominantly Chinese."
+        },
+        "pdfTranslator.chineseTargetReverseLanguage": {
+          "type": "string",
+          "default": "English",
+          "description": "Target language when the selected source is predominantly Chinese. Empty disables automatic direction reversal."
+        },
+        "pdfTranslator.normalizePdfText": {
+          "type": "boolean",
+          "default": true,
+          "description": "Join visual PDF line wraps and repair simple end-of-line hyphenation before translation."
+        },
+        "pdfTranslator.requestTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000,
+          "default": 60000,
+          "description": "API request timeout in milliseconds."
+        },
+        "pdfTranslator.anthropicVersion": {
+          "type": "string",
+          "default": "2023-06-01",
+          "description": "anthropic-version header used by the Anthropic Messages and Models APIs."
+        },
+        "pdfTranslator.systemPrompt": {
+          "type": "string",
+          "default": "You are a precise academic translator. Preserve equations, citations, symbols, paragraph boundaries, and technical terminology. Translate only the explicitly marked selection. Abstract and CCS metadata are silent reference context only and must never be translated, reproduced, or mentioned unless the user explicitly selected that same text. Return only the selection's translation as Markdown, without commentary.",
+          "description": "System instruction prepended to translation requests."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "prepare-assets": "node scripts/copy-pdfjs.mjs",
+    "compile": "npm run prepare-assets && tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "npm run compile && vsce package --allow-missing-repository --no-rewrite-relative-links"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.2.108"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
+  }
+}
