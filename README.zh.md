@@ -39,7 +39,7 @@ code .
 
 ```sh
 npm run package
-code --install-extension latex-pdf-ai-translator-0.4.2.vsix --force
+code --install-extension latex-pdf-ai-translator-0.4.3.vsix --force
 ```
 
 ## 配置

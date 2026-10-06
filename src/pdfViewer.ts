@@ -276,10 +276,11 @@ export class PdfViewerProvider implements vscode.CustomReadonlyEditorProvider<Pd
 <link rel="stylesheet" href="${styleUri}">
 <style>
 :root{color-scheme:light dark}*{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)}
-#toolbar{height:34px;display:flex;align-items:center;justify-content:center;gap:2px;padding:2px 8px;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border);user-select:none}
+#toolbar{height:34px;display:flex;align-items:center;justify-content:center;gap:2px;min-width:0;padding:2px 8px;overflow-x:auto;overflow-y:hidden;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border);user-select:none}
 .tool{height:28px;min-width:28px;padding:0 7px;color:var(--vscode-icon-foreground);background:transparent;border:1px solid transparent;border-radius:3px;font:15px/1 var(--vscode-font-family);cursor:pointer}.tool:hover{background:var(--vscode-toolbar-hoverBackground);border-color:var(--vscode-contrastBorder,transparent)}.tool:disabled{opacity:.4;cursor:default}
 .separator{width:1px;height:18px;margin:0 6px;background:var(--vscode-panel-border)}#pageNumber{width:42px;height:24px;padding:1px 5px;text-align:right;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);border-radius:2px}#pageCount{min-width:32px;color:var(--vscode-descriptionForeground);font-size:12px}#scaleSelect{height:26px;padding:0 20px 0 6px;color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border);border-radius:2px}
-#status{position:absolute;right:12px;color:var(--vscode-descriptionForeground);font-size:12px}.viewport{height:calc(100% - 34px);overflow:auto}.pages{min-height:100%;padding:12px 18px 36px;display:flex;flex-direction:column;align-items:center;gap:12px}.page{position:relative;flex:none;background:white;box-shadow:0 1px 5px #0007}.page canvas{display:block}.textLayer{position:absolute;inset:0;overflow:hidden;opacity:1;line-height:1;text-size-adjust:none;transform-origin:0 0}.textLayer span{cursor:text}.loading{display:flex;align-items:center;gap:8px;padding:40px;color:var(--vscode-descriptionForeground)}.spinner{width:14px;height:14px;border:2px solid var(--vscode-progressBar-background);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.page-error{padding:24px;color:#a00}
+#status{position:absolute;right:12px;max-width:30%;overflow:hidden;color:var(--vscode-descriptionForeground);font-size:12px;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}#status:empty{display:none}.viewport{height:calc(100% - 34px);overflow:auto}.pages{min-height:100%;padding:12px 18px 36px;display:flex;flex-direction:column;align-items:center;gap:12px}.page{position:relative;flex:none;background:white;box-shadow:0 1px 5px #0007}.page canvas{display:block}.textLayer{position:absolute;inset:0;overflow:hidden;opacity:1;line-height:1;text-size-adjust:none;transform-origin:0 0}.textLayer span{cursor:text}.loading{display:flex;align-items:center;gap:8px;padding:40px;color:var(--vscode-descriptionForeground)}.spinner{width:14px;height:14px;border:2px solid var(--vscode-progressBar-background);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.page-error{padding:24px;color:#a00}
+@media(max-width:420px){#toolbar{justify-content:flex-start;padding-inline:4px}.tool{min-width:24px;padding-inline:4px}.separator{margin-inline:2px}#pageNumber{width:36px}#pageCount{min-width:28px}#scaleSelect{max-width:92px;padding-left:4px}}
 </style>
 <title>PDF Translator Viewer</title>
 </head>
@@ -414,7 +415,7 @@ const rebuild = async (keepState = viewerState()) => {
   pages.replaceChildren();
   const baseViewport = firstPage.getViewport({ scale: 1 });
   scale = computedScale(baseViewport);
-  status.textContent = Math.round(scale * 100) + '%';
+  status.textContent = '';
   syncScaleSelect();
   const holders = [];
   for (let number = 1; number <= pdf.numPages; number++) {

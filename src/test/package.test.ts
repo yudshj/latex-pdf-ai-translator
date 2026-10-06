@@ -79,3 +79,9 @@ test('persists viewer state and reserves source navigation for the third click',
     assert.match(viewerSource, /type: 'jumpToSource'/u)
     assert.doesNotMatch(viewerSource, /addEventListener\('dblclick'/u)
 })
+
+test('keeps zoom in the selector and hides an empty viewer status', () => {
+    const viewerSource = fs.readFileSync(path.join(projectRoot, 'src', 'pdfViewer.ts'), 'utf8')
+    assert.match(viewerSource, /#status:empty\{display:none\}/u)
+    assert.doesNotMatch(viewerSource, /status\.textContent\s*=\s*Math\.round\(scale \* 100\)/u)
+})
