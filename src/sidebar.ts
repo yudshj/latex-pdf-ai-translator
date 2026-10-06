@@ -10,6 +10,8 @@ export interface SidebarSelection {
     latexText?: string
     location: string
     pdfUri?: vscode.Uri
+    sourceUri?: vscode.Uri
+    sourceType?: 'pdf' | 'editor'
     documentContext: DocumentContext
 }
 
@@ -32,7 +34,7 @@ export class TranslationSidebar implements vscode.WebviewViewProvider {
     private currentSelection: SidebarSelection | undefined
     private latestSelection: SidebarSelection | undefined
     private translation = ''
-    private status = '请在 PDF 中选择文字'
+    private status = '请在 PDF 或编辑器中选择文字'
     private modelLabel = '未选择模型'
     private modelDetail = ''
     private streaming = false
@@ -62,7 +64,7 @@ export class TranslationSidebar implements vscode.WebviewViewProvider {
                     if (input) {
                         this.actions.translate(input)
                     } else {
-                        this.setStatus('请先在 PDF 中选择一段文字')
+                        this.setStatus('请先在 PDF 或编辑器中选择一段文字')
                     }
                     break
                 }
@@ -127,10 +129,12 @@ export class TranslationSidebar implements vscode.WebviewViewProvider {
         this.latestSelection = selection
         if (force || this.autoFollow || !this.currentSelection) {
             this.currentSelection = selection
-            this.status = selection.latexText ? '选区已映射到 LaTeX 源码' : '当前选区仅有 PDF 文本'
+            this.status = selection.sourceType === 'editor'
+                ? (selection.latexText ? '已同步 LaTeX 编辑器选区' : '已同步文本编辑器选区')
+                : (selection.latexText ? '选区已映射到 LaTeX 源码' : '当前选区仅有 PDF 文本')
             this.pushState()
         } else {
-            this.setStatus('PDF 选区已变化；自动跟随已关闭')
+            this.setStatus('选区已变化；自动跟随已关闭')
         }
     }
 
@@ -152,7 +156,7 @@ export class TranslationSidebar implements vscode.WebviewViewProvider {
         this.streaming = true
         this.status = this.getTranslationInput()?.kind === 'latex'
             ? '读取 TeX，流式输出 Markdown…'
-            : '翻译 PDF 文本…'
+            : '翻译选中文字…'
         this.post({ type: 'translationReset', text: '' })
         this.pushState()
     }
@@ -208,8 +212,11 @@ export class TranslationSidebar implements vscode.WebviewViewProvider {
             latexAvailable,
             latexPreferred: this.latexPreferred,
             autoFollow: this.autoFollow,
-            location: this.currentSelection?.location ?? '尚未取得 PDF 选区',
-            pdfName: this.currentSelection?.pdfUri ? path.basename(this.currentSelection.pdfUri.fsPath) : 'PDF',
+            location: this.currentSelection?.location ?? '尚未取得选区',
+            sourceName: this.currentSelection?.sourceUri
+                ? path.basename(this.currentSelection.sourceUri.fsPath)
+                : (this.currentSelection?.pdfUri ? path.basename(this.currentSelection.pdfUri.fsPath) : '选区'),
+            sourceType: this.currentSelection?.sourceType ?? 'none',
             translation: this.translation,
             streaming: this.streaming,
             status: this.status,
@@ -255,7 +262,7 @@ button{font:inherit;color:var(--vscode-button-secondaryForeground);background:va
     <button class="icon" id="clear" aria-label="清空译文" title="清空译文">清空</button>
     <span class="spacer"></span>
   </div>
-  <div class="context"><span id="pdf-name">PDF</span><span class="location" id="location">尚未取得 PDF 选区</span><span class="sync" id="sync">纯文本</span></div>
+  <div class="context"><span id="source-name">选区</span><span class="location" id="location">尚未取得选区</span><span class="sync" id="sync">纯文本</span></div>
   <div class="options">
     <label class="check"><input id="auto-follow" type="checkbox" checked>自动跟随</label>
     <label class="check" id="latex-label"><input id="latex" type="checkbox">使用 LaTeX 源码</label>
@@ -265,7 +272,7 @@ button{font:inherit;color:var(--vscode-button-secondaryForeground);background:va
     <section class="pane"><div class="heading">译文预览<span class="dot"></span><span class="minor">已渲染 Markdown</span></div><div id="translation" aria-live="polite">等待翻译</div></section>
     <section class="pane"><div class="heading">发送给模型的原文<span class="minor" id="source-mode">纯文本</span></div><textarea id="source" readonly></textarea></section>
   </div>
-  <div class="status"><span class="status-text" id="status">请在 PDF 中选择文字</span><span class="recognized" id="abstract-status" hidden>✓ 已识别摘要</span><span class="recognized" id="ccs-status" hidden>✓ 已识别 CCS concept</span><span class="model" id="model"></span></div>
+  <div class="status"><span class="status-text" id="status">请在 PDF 或编辑器中选择文字</span><span class="recognized" id="abstract-status" hidden>✓ 已识别摘要</span><span class="recognized" id="ccs-status" hidden>✓ 已识别 CCS concept</span><span class="model" id="model"></span></div>
 </div>
 <script nonce="${nonce}">
 const vscode=acquireVsCodeApi();
@@ -274,7 +281,7 @@ function escapeHtml(value){return value.replace(/[&<>"']/g,char=>({'&':'&amp;','
 function inline(value){const codes=[];let safe=escapeHtml(value).replace(/\x60([^\x60]+)\x60/g,(_,code)=>{codes.push('<code>'+code+'</code>');return '\u0000'+(codes.length-1)+'\u0000'});safe=safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2">$1</a>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/__([^_]+)__/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*]+)\*/g,'$1<em>$2</em>');return safe.replace(/\u0000(\d+)\u0000/g,(_,index)=>codes[Number(index)])}
 function renderMarkdown(value){const lines=value.replace(/\r\n?/g,'\n').split('\n');const blocks=[];let paragraph=[];let list=null;let fence=null;const flush=()=>{if(paragraph.length){blocks.push('<p>'+inline(paragraph.join(' '))+'</p>');paragraph=[]}if(list){blocks.push('<'+list.type+'>'+list.items.map(item=>'<li>'+inline(item)+'</li>').join('')+'</'+list.type+'>');list=null}};for(const line of lines){if(fence!==null){if(/^\x60\x60\x60/.test(line)){blocks.push('<pre><code>'+escapeHtml(fence.join('\n'))+'</code></pre>');fence=null}else fence.push(line);continue}if(/^\x60\x60\x60/.test(line)){flush();fence=[];continue}const heading=/^(#{1,3})\s+(.+)$/.exec(line);if(heading){flush();const level=heading[1].length;blocks.push('<h'+level+'>'+inline(heading[2])+'</h'+level+'>');continue}const quote=/^>\s?(.*)$/.exec(line);if(quote){flush();blocks.push('<blockquote>'+inline(quote[1])+'</blockquote>');continue}const bullet=/^\s*[-*+]\s+(.+)$/.exec(line);const ordered=/^\s*\d+[.)]\s+(.+)$/.exec(line);if(bullet||ordered){const type=ordered?'ol':'ul';if(list&&list.type!==type)flush();if(!list)list={type,items:[]};list.items.push((bullet||ordered)[1]);continue}if(!line.trim()){flush();continue}if(list)flush();paragraph.push(line.trim())}flush();if(fence!==null)blocks.push('<pre><code>'+escapeHtml(fence.join('\n'))+'</code></pre>');return blocks.join('')||'<p></p>'}
 function render(){translation.innerHTML=renderMarkdown(markdown);translation.scrollTop=translation.scrollHeight}
-window.addEventListener('message',event=>{const message=event.data;if(message.type==='state'){const state=message.state;markdown=state.translation??markdown;render();source.value=state.sourceText??'';source.classList.toggle('latex',state.sourceKind==='latex');latex.checked=Boolean(state.latexPreferred);latex.disabled=!state.latexAvailable;latexLabel.classList.toggle('unavailable',!state.latexAvailable);autoFollow.checked=Boolean(state.autoFollow);thinking.value=state.thinkingLevel||'off';document.getElementById('source-mode').textContent=state.sourceKind==='latex'?'LaTeX 源码':(!state.latexAvailable&&state.latexPreferred?'无可用 LaTeX 源码':'纯文本');document.getElementById('location').textContent=state.location;document.getElementById('pdf-name').textContent=state.pdfName;document.getElementById('sync').textContent=state.latexAvailable?'SyncTeX':'仅 PDF 文本';document.getElementById('sync').style.color=state.latexAvailable?'var(--vscode-testing-iconPassed)':'var(--vscode-disabledForeground)';document.getElementById('status').textContent=state.status;document.getElementById('abstract-status').hidden=!state.abstractDetected;document.getElementById('ccs-status').hidden=!state.ccsConceptsDetected;const model=document.getElementById('model');model.textContent=state.modelLabel;model.title=state.modelDetail||state.modelLabel;shell.classList.toggle('streaming',state.streaming);translate.disabled=state.streaming||!state.sourceText;stop.disabled=!state.streaming}else if(message.type==='translationReset'){markdown=message.text||'';render()}else if(message.type==='translationDelta'){markdown+=message.delta;render()}else if(message.type==='translationDone'){markdown=message.text;render()}else if(message.type==='translationError'){document.getElementById('status').textContent=message.message}});
+window.addEventListener('message',event=>{const message=event.data;if(message.type==='state'){const state=message.state;markdown=state.translation??markdown;render();source.value=state.sourceText??'';source.classList.toggle('latex',state.sourceKind==='latex');latex.checked=Boolean(state.latexPreferred);latex.disabled=!state.latexAvailable;latexLabel.classList.toggle('unavailable',!state.latexAvailable);autoFollow.checked=Boolean(state.autoFollow);thinking.value=state.thinkingLevel||'off';document.getElementById('source-mode').textContent=state.sourceKind==='latex'?'LaTeX 源码':(!state.latexAvailable&&state.latexPreferred?'无可用 LaTeX 源码':'纯文本');document.getElementById('location').textContent=state.location;document.getElementById('source-name').textContent=state.sourceName;const directLatex=state.sourceType==='editor'&&state.latexAvailable;document.getElementById('sync').textContent=directLatex?'LaTeX 选区':(state.latexAvailable?'SyncTeX':(state.sourceType==='editor'?'文本选区':'仅 PDF 文本'));document.getElementById('sync').style.color=state.latexAvailable?'var(--vscode-testing-iconPassed)':'var(--vscode-disabledForeground)';document.getElementById('status').textContent=state.status;document.getElementById('abstract-status').hidden=!state.abstractDetected;document.getElementById('ccs-status').hidden=!state.ccsConceptsDetected;const model=document.getElementById('model');model.textContent=state.modelLabel;model.title=state.modelDetail||state.modelLabel;shell.classList.toggle('streaming',state.streaming);translate.disabled=state.streaming||!state.sourceText;stop.disabled=!state.streaming}else if(message.type==='translationReset'){markdown=message.text||'';render()}else if(message.type==='translationDelta'){markdown+=message.delta;render()}else if(message.type==='translationDone'){markdown=message.text;render()}else if(message.type==='translationError'){document.getElementById('status').textContent=message.message}});
 translate.addEventListener('click',()=>vscode.postMessage({type:'translate'}));stop.addEventListener('click',()=>vscode.postMessage({type:'stop'}));document.getElementById('copy').addEventListener('click',()=>vscode.postMessage({type:'copy'}));document.getElementById('clear').addEventListener('click',()=>vscode.postMessage({type:'clear'}));latex.addEventListener('change',()=>vscode.postMessage({type:'setLatexPreference',value:latex.checked}));autoFollow.addEventListener('change',()=>vscode.postMessage({type:'setAutoFollow',value:autoFollow.checked}));thinking.addEventListener('change',()=>vscode.postMessage({type:'setThinkingLevel',value:thinking.value}));vscode.postMessage({type:'ready'});
 </script></body></html>`
     }

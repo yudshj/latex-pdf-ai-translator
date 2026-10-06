@@ -65,86 +65,157 @@ export class PdfViewerProvider implements vscode.CustomReadonlyEditorProvider<Pd
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${styleUri}">
 <style>
-:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)}
-#toolbar{position:sticky;top:0;z-index:20;height:40px;display:flex;align-items:center;gap:7px;padding:5px 10px;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border)}
-button{height:28px;min-width:30px;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;border-radius:2px;cursor:pointer}button:hover{background:var(--vscode-button-hoverBackground)}
-#status{margin-left:auto;color:var(--vscode-descriptionForeground);font-size:12px}.pages{padding:14px 20px 40px;display:flex;flex-direction:column;align-items:center;gap:14px}.page{position:relative;background:white;box-shadow:0 2px 9px #0006}.page canvas{display:block}.textLayer{position:absolute;inset:0;overflow:hidden;opacity:1;line-height:1;text-size-adjust:none;transform-origin:0 0}.textLayer span{cursor:text}.loading{padding:40px;color:var(--vscode-descriptionForeground)}
+:root{color-scheme:light dark}*{box-sizing:border-box}html,body{height:100%}body{margin:0;overflow:hidden;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)}
+#toolbar{height:34px;display:flex;align-items:center;justify-content:center;gap:2px;padding:2px 8px;background:var(--vscode-editor-background);border-bottom:1px solid var(--vscode-panel-border);user-select:none}
+.tool{height:28px;min-width:28px;padding:0 7px;color:var(--vscode-icon-foreground);background:transparent;border:1px solid transparent;border-radius:3px;font:15px/1 var(--vscode-font-family);cursor:pointer}.tool:hover{background:var(--vscode-toolbar-hoverBackground);border-color:var(--vscode-contrastBorder,transparent)}.tool:disabled{opacity:.4;cursor:default}
+.separator{width:1px;height:18px;margin:0 6px;background:var(--vscode-panel-border)}#pageNumber{width:42px;height:24px;padding:1px 5px;text-align:right;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border);border-radius:2px}#pageCount{min-width:32px;color:var(--vscode-descriptionForeground);font-size:12px}#scaleSelect{height:26px;padding:0 20px 0 6px;color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border);border-radius:2px}
+#status{position:absolute;right:12px;color:var(--vscode-descriptionForeground);font-size:12px}.viewport{height:calc(100% - 34px);overflow:auto}.pages{min-height:100%;padding:12px 18px 36px;display:flex;flex-direction:column;align-items:center;gap:12px}.page{position:relative;flex:none;background:white;box-shadow:0 1px 5px #0007}.page canvas{display:block}.textLayer{position:absolute;inset:0;overflow:hidden;opacity:1;line-height:1;text-size-adjust:none;transform-origin:0 0}.textLayer span{cursor:text}.loading{display:flex;align-items:center;gap:8px;padding:40px;color:var(--vscode-descriptionForeground)}.spinner{width:14px;height:14px;border:2px solid var(--vscode-progressBar-background);border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.page-error{padding:24px;color:#a00}
 </style>
 <title>PDF Translator Viewer</title>
 </head>
 <body>
-<div id="toolbar"><button id="zoomOut" title="Zoom out">−</button><button id="zoomIn" title="Zoom in">+</button><button id="fit" title="Fit width">Fit</button><span id="status">Loading…</span></div>
-<main id="pages" class="pages"><div class="loading">Loading PDF…</div></main>
+<div id="toolbar">
+  <button class="tool" id="previous" title="Previous page" aria-label="Previous page">‹</button>
+  <button class="tool" id="next" title="Next page" aria-label="Next page">›</button>
+  <input id="pageNumber" type="number" min="1" value="1" aria-label="Page number"><span id="pageCount">/ —</span>
+  <span class="separator"></span>
+  <button class="tool" id="zoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+  <button class="tool" id="zoomIn" title="Zoom in" aria-label="Zoom in">＋</button>
+  <select id="scaleSelect" title="Zoom"><option value="auto">Automatic zoom</option><option value="page-width">Page width</option><option value="page-fit">Page fit</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select>
+  <span id="status">Loading…</span>
+</div>
+<main id="viewport" class="viewport"><div id="pages" class="pages"><div class="loading"><span class="spinner"></span>Loading PDF…</div></div></main>
 <script type="module" nonce="${nonce}">
 import * as pdfjsLib from ${js(scriptUri.toString())};
 const vscode = acquireVsCodeApi();
 pdfjsLib.GlobalWorkerOptions.workerSrc = ${js(workerUri.toString())};
 const pages = document.getElementById('pages');
+const viewportElement = document.getElementById('viewport');
 const status = document.getElementById('status');
+const pageNumber = document.getElementById('pageNumber');
+const pageCount = document.getElementById('pageCount');
+const scaleSelect = document.getElementById('scaleSelect');
 const url = ${js(documentUri.toString())};
 let pdf;
-let scale = 1.35;
+let firstPage;
+let scaleMode = 'auto';
+let scale = 1;
 let generation = 0;
-const render = async () => {
+let currentPage = 1;
+let renderObserver;
+let pageObserver;
+const computedScale = baseViewport => {
+  if (!Number.isNaN(Number(scaleMode))) return Number(scaleMode);
+  const widthScale = Math.max(.35, (viewportElement.clientWidth - 36) / baseViewport.width);
+  if (scaleMode === 'page-fit') return Math.min(widthScale, Math.max(.35, (viewportElement.clientHeight - 24) / baseViewport.height));
+  return Math.min(2.5, widthScale);
+};
+const renderPage = async (holder, number, current) => {
+  if (holder.dataset.rendered === 'true' || holder.dataset.rendering === 'true') return;
+  holder.dataset.rendering = 'true';
+  try {
+    const page = number === 1 ? firstPage : await pdf.getPage(number);
+    if (current !== generation || !holder.isConnected) return;
+    const pageViewport = page.getViewport({ scale });
+    holder.style.width = pageViewport.width + 'px';
+    holder.style.height = pageViewport.height + 'px';
+    const canvas = document.createElement('canvas');
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(pageViewport.width * ratio);
+    canvas.height = Math.floor(pageViewport.height * ratio);
+    canvas.style.width = pageViewport.width + 'px';
+    canvas.style.height = pageViewport.height + 'px';
+    const textLayer = document.createElement('div');
+    textLayer.className = 'textLayer';
+    holder.replaceChildren(canvas, textLayer);
+    const context = canvas.getContext('2d');
+    await Promise.all([
+      page.render({ canvasContext: context, viewport: pageViewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise,
+      new pdfjsLib.TextLayer({ textContentSource: page.streamTextContent(), container: textLayer, viewport: pageViewport }).render(),
+    ]);
+    holder.dataset.rendered = 'true';
+  } catch (error) {
+    holder.innerHTML = '<div class="page-error">Page ' + number + ' could not be rendered.</div>';
+    vscode.postMessage({ type: 'error', detail: error instanceof Error ? error.message : String(error) });
+  } finally {
+    delete holder.dataset.rendering;
+  }
+};
+const rebuild = async (keepPage = currentPage) => {
   const current = ++generation;
+  renderObserver?.disconnect();
+  pageObserver?.disconnect();
   pages.replaceChildren();
-  status.textContent = pdf ? pdf.numPages + ' pages · ' + Math.round(scale * 100) + '%' : 'Loading…';
+  const baseViewport = firstPage.getViewport({ scale: 1 });
+  scale = computedScale(baseViewport);
+  status.textContent = Math.round(scale * 100) + '%';
+  scaleSelect.value = scaleMode;
+  const holders = [];
   for (let number = 1; number <= pdf.numPages; number++) {
-    if (current !== generation) return;
-    const page = await pdf.getPage(number);
-    const viewport = page.getViewport({ scale });
     const holder = document.createElement('section');
     holder.className = 'page';
     holder.dataset.pageNumber = String(number);
-    holder.style.width = viewport.width + 'px';
-    holder.style.height = viewport.height + 'px';
-    const canvas = document.createElement('canvas');
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(viewport.width * ratio);
-    canvas.height = Math.floor(viewport.height * ratio);
-    canvas.style.width = viewport.width + 'px';
-    canvas.style.height = viewport.height + 'px';
-    const textLayer = document.createElement('div');
-    textLayer.className = 'textLayer';
-    holder.append(canvas, textLayer);
+    holder.style.width = baseViewport.width * scale + 'px';
+    holder.style.height = baseViewport.height * scale + 'px';
     pages.append(holder);
-    const context = canvas.getContext('2d');
-    await Promise.all([
-      page.render({ canvasContext: context, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] }).promise,
-      new pdfjsLib.TextLayer({ textContentSource: page.streamTextContent(), container: textLayer, viewport }).render(),
-    ]);
+    holders.push(holder);
   }
+  renderObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting) void renderPage(entry.target, Number(entry.target.dataset.pageNumber), current);
+  }, { root: viewportElement, rootMargin: '100% 0px' });
+  pageObserver = new IntersectionObserver(entries => {
+    const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible) {
+      currentPage = Number(visible.target.dataset.pageNumber);
+      pageNumber.value = String(currentPage);
+    }
+  }, { root: viewportElement, threshold: [.25, .5, .75] });
+  holders.forEach(holder => { renderObserver.observe(holder); pageObserver.observe(holder); });
+  await renderPage(holders[0], 1, current);
+  holders[Math.max(0, Math.min(keepPage - 1, holders.length - 1))]?.scrollIntoView({ block: 'start' });
 };
 try {
-  pdf = await pdfjsLib.getDocument({ url, cMapUrl: ${js(cMapUri)}, cMapPacked: true, standardFontDataUrl: ${js(fontUri)}, wasmUrl: ${js(wasmUri)} }).promise;
-  await render();
+  const task = pdfjsLib.getDocument({ url, cMapUrl: ${js(cMapUri)}, cMapPacked: true, standardFontDataUrl: ${js(fontUri)}, wasmUrl: ${js(wasmUri)} });
+  task.onProgress = ({ loaded, total }) => { if (total) status.textContent = 'Loading ' + Math.round(loaded / total * 100) + '%'; };
+  pdf = await task.promise;
+  firstPage = await pdf.getPage(1);
+  pageNumber.max = String(pdf.numPages);
+  pageCount.textContent = '/ ' + pdf.numPages;
+  await rebuild(1);
 } catch (error) {
   status.textContent = 'Failed to load PDF';
   pages.innerHTML = '<div class="loading">Unable to open this PDF.</div>';
   vscode.postMessage({ type: 'error', detail: error instanceof Error ? error.message : String(error) });
 }
-document.getElementById('zoomIn').addEventListener('click', () => { scale = Math.min(3, scale + .15); void render(); });
-document.getElementById('zoomOut').addEventListener('click', () => { scale = Math.max(.45, scale - .15); void render(); });
-document.getElementById('fit').addEventListener('click', () => {
-  const page = pages.querySelector('.page');
-  if (!page) return;
-  scale = Math.max(.45, Math.min(3, scale * (pages.clientWidth - 40) / page.getBoundingClientRect().width));
-  void render();
+const goToPage = number => pages.querySelector('[data-page-number="' + Math.max(1, Math.min(pdf.numPages, number)) + '"]')?.scrollIntoView({ block: 'start' });
+document.getElementById('previous').addEventListener('click', () => goToPage(currentPage - 1));
+document.getElementById('next').addEventListener('click', () => goToPage(currentPage + 1));
+pageNumber.addEventListener('change', () => goToPage(Number(pageNumber.value)));
+document.getElementById('zoomIn').addEventListener('click', () => { scaleMode = String(Math.min(3, scale + .15)); void rebuild(); });
+document.getElementById('zoomOut').addEventListener('click', () => { scaleMode = String(Math.max(.35, scale - .15)); void rebuild(); });
+scaleSelect.addEventListener('change', () => { scaleMode = scaleSelect.value; void rebuild(); });
+let resizeTimer;
+window.addEventListener('resize', () => {
+  if (!pdf || !['auto', 'page-width', 'page-fit'].includes(scaleMode)) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => void rebuild(), 120);
 });
 let selectionTimer;
+const publishSelection = () => {
+  const selection = window.getSelection();
+  const text = selection && !selection.isCollapsed ? selection.toString() : '';
+  if (text.trim()) vscode.postMessage({ type: 'selection', text });
+};
 document.addEventListener('selectionchange', () => {
   clearTimeout(selectionTimer);
-  selectionTimer = setTimeout(() => {
-    const selection = window.getSelection();
-    const text = selection && !selection.isCollapsed ? selection.toString() : '';
-    if (text.trim()) vscode.postMessage({ type: 'selection', text });
-  }, 80);
+  selectionTimer = setTimeout(publishSelection, 80);
 });
 document.addEventListener('keydown', event => {
   const trigger = ${isMac} ? event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 'c' : event.altKey && event.key.toLowerCase() === 'c';
   if (trigger) {
     event.preventDefault();
-    vscode.postMessage({ type: 'shortcut' });
+    publishSelection();
+    setTimeout(() => vscode.postMessage({ type: 'shortcut' }), 0);
   }
 });
 </script>

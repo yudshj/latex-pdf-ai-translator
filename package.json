@@ -2,7 +2,7 @@
   "name": "latex-pdf-ai-translator",
   "displayName": "LaTeX PDF AI Translator",
   "description": "A focused PDF viewer with SyncTeX-aware selection and streaming AI translation.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/yudshj/latex-pdf-ai-translator",
@@ -63,7 +63,7 @@
       },
       {
         "command": "pdfTranslator.handleShortcut",
-        "title": "PDF Translator: Handle PDF Translation Shortcut"
+        "title": "PDF Translator: Handle Selection Translation Shortcut"
       },
       {
         "command": "pdfTranslator.openSidebar",
@@ -93,7 +93,7 @@
         "command": "pdfTranslator.handleShortcut",
         "key": "alt+c",
         "mac": "ctrl+c",
-        "when": "activeCustomEditorId == 'pdfTranslator.pdfViewer'"
+        "when": "activeCustomEditorId == 'pdfTranslator.pdfViewer' || editorTextFocus"
       }
     ],
     "configuration": {
@@ -182,6 +182,14 @@
           "type": "boolean",
           "default": true,
           "description": "Join visual PDF line wraps and repair simple end-of-line hyphenation before translation."
+        },
+        "pdfTranslator.textSelectionPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["*.tex"],
+          "description": "Filename glob patterns whose non-empty text-editor selections are followed by the translation sidebar. Patterns without a slash match the filename; path patterns match the workspace-relative path."
         },
         "pdfTranslator.requestTimeoutMs": {
           "type": "integer",

@@ -14,6 +14,12 @@ interface ExtensionManifest {
     }
 }
 
+interface ArraySetting {
+    type?: string
+    items?: { type?: string }
+    default?: unknown
+}
+
 const projectRoot = path.resolve(__dirname, '..', '..')
 const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')) as ExtensionManifest
 
@@ -30,6 +36,13 @@ test('provides its own focused PDF viewer without an extension dependency', () =
 test('uses Control+C on macOS and Alt+C elsewhere for selection-based translation', () => {
     const binding = manifest.contributes?.keybindings?.find(item => item.command === 'pdfTranslator.handleShortcut')
     assert.deepEqual(binding && { key: binding.key, mac: binding.mac }, { key: 'alt+c', mac: 'ctrl+c' })
+})
+
+test('exposes text selection filename patterns as a settings array', () => {
+    const setting = manifest.contributes?.configuration?.properties?.['pdfTranslator.textSelectionPatterns'] as ArraySetting
+    assert.equal(setting.type, 'array')
+    assert.equal(setting.items?.type, 'string')
+    assert.deepEqual(setting.default, ['*.tex'])
 })
 
 test('does not expose the retired clipboard-input commands or settings', () => {

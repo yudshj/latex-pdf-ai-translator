@@ -2,12 +2,13 @@ import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { listModels, translateStreaming } from './apiClient.js'
 import { parsePdfSelectionPayload } from './bridge.js'
-import { clearDocumentContextCache, detectDocumentContext } from './documentContext.js'
+import { clearDocumentContextCache, detectDocumentContext, extractDocumentContext } from './documentContext.js'
 import { formatTokenCount, knownModelProfile } from './modelCatalog.js'
 import { PdfViewerProvider } from './pdfViewer.js'
 import { SidebarSelection, TranslationInput, TranslationSidebar } from './sidebar.js'
 import { resolveLatexSource } from './synctex.js'
 import { normalizePdfSelection, RepeatedShortcutTracker } from './text.js'
+import { hasUsableTextSelection, isLatexFile, matchesTextSelectionPattern } from './textSelection.js'
 import { ApiStyle, ModelProfile, RuntimeConfig, ThinkingLevel } from './types.js'
 
 const SECRET_KEY = 'pdfTranslator.apiKey'
@@ -89,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     runTranslation = async (input: TranslationInput): Promise<void> => {
         if (!input.text.trim()) {
-            void vscode.window.showWarningMessage('PDF Translator: no PDF text is selected.')
+            void vscode.window.showWarningMessage('PDF Translator: no text is selected.')
             return
         }
         if (translating) {
@@ -135,13 +136,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     let selectionCache: { key: string, selection: SidebarSelection } | undefined
-    let bridgedSelectionGeneration = 0
+    let selectionGeneration = 0
 
     context.subscriptions.push(vscode.commands.registerCommand('pdfTranslator.updatePdfSelection', async (rawPayload: unknown) => {
         const payload = parsePdfSelectionPayload(rawPayload)
         if (!payload || !payload.text.trim()) {
             return
         }
+        const generation = ++selectionGeneration
         let pdfUri: vscode.Uri
         try {
             pdfUri = vscode.Uri.parse(payload.pdfFileUri, true)
@@ -169,11 +171,11 @@ export function activate(context: vscode.ExtensionContext): void {
             latexText: hasSourceRange ? payload.sourceText : undefined,
             location,
             pdfUri,
+            sourceType: 'pdf',
             documentContext: { ccsConcepts: [] },
         }
         selectionCache = { key: `${pdfUri.toString()}\u0000${plainText}`, selection }
         sidebar.setSelection(selection)
-        const generation = ++bridgedSelectionGeneration
         const [mapped, documentContext] = await Promise.all([
             hasSourceRange
                 ? Promise.resolve(undefined)
@@ -186,7 +188,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 return { ccsConcepts: [] }
             }),
         ])
-        if (generation === bridgedSelectionGeneration) {
+        if (generation === selectionGeneration) {
             const contextualSelection = mapped
                 ? { ...selection, latexText: mapped.text, location: mapped.label, documentContext }
                 : { ...selection, documentContext }
@@ -194,6 +196,63 @@ export function activate(context: vscode.ExtensionContext): void {
             sidebar.setSelection(contextualSelection)
         }
     }))
+
+    const publishEditorSelection = async (editor: vscode.TextEditor | undefined): Promise<void> => {
+        if (!editor || editor.selection.isEmpty || editor.document.uri.scheme !== 'file') {
+            return
+        }
+        const patterns = vscode.workspace.getConfiguration(CONFIG_SECTION)
+            .get<string[]>('textSelectionPatterns', ['*.tex'])
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri)
+        const relativePath = workspaceFolder
+            ? path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath)
+            : undefined
+        if (!matchesTextSelectionPattern(editor.document.uri.fsPath, patterns, relativePath)) {
+            return
+        }
+        const selectedText = editor.document.getText(editor.selection)
+        if (!hasUsableTextSelection(selectedText)) {
+            return
+        }
+        const generation = ++selectionGeneration
+        const start = editor.selection.start
+        const end = editor.selection.end
+        const locationPath = relativePath && !relativePath.startsWith('..')
+            ? relativePath
+            : path.basename(editor.document.uri.fsPath)
+        const latex = isLatexFile(editor.document.uri.fsPath, editor.document.languageId)
+        const selection: SidebarSelection = {
+            plainText: selectedText,
+            latexText: latex ? selectedText : undefined,
+            location: `${locationPath} · ${start.line + 1}:${start.character + 1}–${end.line + 1}:${end.character + 1}`,
+            sourceUri: editor.document.uri,
+            sourceType: 'editor',
+            documentContext: { ccsConcepts: [] },
+        }
+        selectionCache = { key: `${editor.document.uri.toString()}\u0000${selectedText}`, selection }
+        sidebar.setSelection(selection)
+        if (latex) {
+            const documentContext = await Promise.resolve(editor.document.getText())
+                .then(source => extractDocumentContext(source))
+                .catch(error => {
+                    output.appendLine(`[context] ${error instanceof Error ? error.message : String(error)}`)
+                    return { ccsConcepts: [] }
+                })
+            if (generation === selectionGeneration) {
+                const contextualSelection = { ...selection, documentContext }
+                selectionCache = { key: `${editor.document.uri.toString()}\u0000${selectedText}`, selection: contextualSelection }
+                sidebar.setSelection(contextualSelection)
+            }
+        }
+    }
+
+    context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(event => {
+        void publishEditorSelection(event.textEditor)
+    }))
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+        void publishEditorSelection(editor)
+    }))
+    void publishEditorSelection(vscode.window.activeTextEditor)
 
     context.subscriptions.push(vscode.commands.registerCommand('pdfTranslator.handleShortcut', async () => {
         const settings = vscode.workspace.getConfiguration(CONFIG_SECTION)
@@ -203,7 +262,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const selection = selectionCache?.selection
         if (!selection?.plainText.trim()) {
             tracker.reset()
-            void vscode.window.setStatusBarMessage('$(warning) Select text in PDF Translator Viewer first.', 1800)
+            void vscode.window.setStatusBarMessage('$(warning) Select text in the PDF viewer or a supported text editor first.', 1800)
             return
         }
         const required = settings.get<2 | 3>('shortcutPressCount', 2)
@@ -219,8 +278,8 @@ export function activate(context: vscode.ExtensionContext): void {
         } else {
             status.text = `$(zap) Translate ${state.count}/${required}`
             status.tooltip = process.platform === 'darwin'
-                ? 'Press Control+C again to translate the current PDF selection'
-                : 'Press Alt+C again to translate the current PDF selection'
+                ? 'Press Control+C again to translate the current selection'
+                : 'Press Alt+C again to translate the current selection'
             status.show()
             setTimeout(() => {
                 if (!translating) {

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-这是一个独立的 VS Code 扩展，内置精简的 PDF.js viewer、支持 SyncTeX 的源码匹配和流式翻译侧栏，不依赖也不 fork LaTeX Workshop。选中 PDF 文字时会立即更新侧栏；在 macOS 连按两次 `Control+C`，或在 Windows/Linux 连按两次 `Alt+C`，即可开始翻译。也可以在设置中把快捷键次数改为三次。
+这是一个独立的 VS Code 扩展，内置精简的 PDF.js viewer、支持 SyncTeX 的源码匹配和流式翻译侧栏，不依赖也不 fork LaTeX Workshop。在 PDF viewer 或配置允许的文本文件中选中文字时，会立即更新侧栏；在 macOS 连按两次 `Control+C`，或在 Windows/Linux 连按两次 `Alt+C`，即可开始翻译。也可以在设置中把快捷键次数改为三次。
 
 请继续安装官方 `James-Yu.latex-workshop` 扩展，由它负责 LaTeX 工程识别、编译、诊断和编辑。本扩展只替换 PDF 查看路径，不替代 LaTeX Workshop 的写作功能。
 
@@ -11,6 +11,7 @@
 - macOS 上的普通 `Command+C` 复制行为保持不变。翻译快捷键只读取 viewer 主动发送的选区事件，从不读取剪贴板。
 - 新增活动栏翻译视图：操作按钮位于顶部，流式 Markdown 译文位于上方，当前原文位于下方。
 - 在内置的 **PDF Translator Viewer** 中打开 PDF，并直接跟随选区事件。有 SyncTeX 数据时，扩展会在 SyncTeX 记录的 `.tex` 文件中保守匹配 PDF 选中文字，并把对应源码交给模型。
+- 跟随配置允许的文本文件中的非空选区。`pdfTranslator.textSelectionPatterns` 是 JSON 列表，默认值为 `["*.tex"]`；需要时可加入 `"*.md"` 或 `"chapters/**/*.tex"` 等条目。
 - 记住 **使用 LaTeX 源码** 的选择。当前选区无法映射时，该选项保持选中但暂时置灰；下一个可映射选区会自动恢复 LaTeX 模式。
 - 支持 OpenAI Responses、OpenAI-compatible Chat Completions、Anthropic Messages 和旧式 Completions 请求格式。
 - 获取 endpoint 的云端模型列表，并提供可搜索的选择器。
@@ -35,7 +36,7 @@ code .
 
 ```sh
 npm run package
-code --install-extension latex-pdf-ai-translator-0.4.0.vsix --force
+code --install-extension latex-pdf-ai-translator-0.4.1.vsix --force
 ```
 
 ## 配置
@@ -46,6 +47,7 @@ code --install-extension latex-pdf-ai-translator-0.4.0.vsix --force
 - `pdfTranslator.apiStyle`：`responses`、`chat-completions`、`anthropic` 或 `completions`。
 - `pdfTranslator.model`：直接填写 ID，或运行 `PDF Translator: Select Cloud Model`。
 - `pdfTranslator.shortcutPressCount`：`2` 或 `3`。
+- `pdfTranslator.textSelectionPatterns`：允许跟随的文件名或工作区相对路径 glob，例如 `["*.tex", "notes/*.md"]`。
 - `pdfTranslator.thinkingLevel`：`off`、`medium`、`high` 或 `max`；默认 `off`，以缩短首 token 延迟。
 - `pdfTranslator.maxOutputTokens`：设为 `0` 时采用 provider/model metadata 的自动行为。
 
